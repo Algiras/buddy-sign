@@ -40,18 +40,19 @@
 ;; --- Implementation details
 
 (defn- encode-header
-  [{:keys [alg typ enc zip]}]
+  [{:keys [alg typ enc zip kid]}]
   (let [alg (if (= alg :dir) "dir" (str/upper-case (name alg)))
         typ (.toUpperCase (name typ))
         enc (.toUpperCase (name enc))
-        header (merge {:alg alg :typ typ :enc enc}
+        kid (str kid)
+        header (merge {:alg alg :typ typ :enc enc :kid kid}
                       (when zip {:zip "DEF"}))]
     (-> (json/generate-string header)
         (b64/encode true))))
 
 (defn- parse-header
   [^String data]
-  (let [{:keys [alg typ enc zip] :as header} (-> (b64/decode data)
+  (let [{:keys [alg typ enc zip kid] :as header} (-> (b64/decode data)
                                                  (codecs/bytes->str)
                                                  (json/parse-string true))]
     (when-not (map? header)
@@ -59,7 +60,8 @@
                       {:type :validation :cause :header})))
     (cond-> {:typ typ :zip (= zip "DEF")}
       alg (assoc :alg (keyword (str/lower-case alg)))
-      enc (assoc :enc (keyword (str/lower-case enc))))))
+      enc (assoc :enc (keyword (str/lower-case enc)))
+      kid (assoc :kid (str kid)))))
 
 (defn- generate-iv
   [{:keys [enc]}]
@@ -213,13 +215,13 @@
 (defn encrypt
   "Encrypt then sign arbitrary length string/byte array using
   json web encryption."
-  [payload key & [{:keys [alg enc zip typ]
+  [payload key & [{:keys [alg enc zip typ kid]
                   :or {alg :dir enc :a128cbc-hs256 zip false typ :jwe}
                   :as opts}]]
   (let [scek (cek/generate {:key key :alg alg :enc enc})
         ecek (cek/encrypt {:key key :cek scek :alg alg :enc enc})
         iv (generate-iv {:enc enc})
-        header (encode-header {:alg alg :enc enc :zip zip :typ typ})
+        header (encode-header {:alg alg :enc enc :zip zip :typ typ :kid kid})
         payload (encode-payload payload zip)
         [ciphertext authtag] (aead-encrypt {:alg enc
                                             :plaintext payload

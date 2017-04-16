@@ -19,7 +19,7 @@
             [buddy.sign.util :as util]
             [cheshire.core :as json]))
 
-(defn- validate-claims [claims {:keys [max-age iss aud now] :or
+(defn- validate-claims [claims {:keys [max-age iss aud now req-subject] :or
                                {now (util/now)}}]
 
   (let [now (util/to-timestamp now)]
@@ -44,6 +44,9 @@
     (when (and (:iat claims) (number? max-age) (> (- now (:iat claims)) max-age))
       (throw (ex-info (format "Token is older than max-age (%s)" max-age)
                       {:type :validation :cause :max-age})))
+    (when (and req-subject (nil? (:sub claims)))
+      (throw (ex-info (str "Subject required, but missing")
+                      {:type :validation :cause :sub})))
     claims))
 
 (defn- normalize-date-claims
